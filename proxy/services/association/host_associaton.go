@@ -13,10 +13,8 @@ import (
 )
 
 type HostAssociationService interface {
-	Exists(prId string) bool
 	Unregister(prId string) error
-	GetAssociatedHost(prId string) (*models.AssociatedHost, error)
-	ReserveHost(prId string, k8s *kubernetes.Clientset, atlantisNamespace string) (*models.PullRequestAssociation, error)
+	GetOrReserveHost(prId string, k8s *kubernetes.Clientset, atlantisNamespace string) (*models.PullRequestAssociation, error)
 	Consolidate() error
 }
 
@@ -25,22 +23,8 @@ type DefaultHostAssociationService struct {
 	HostStore *store.StateStore[models.AssociatedHost]
 }
 
-func (d *DefaultHostAssociationService) Exists(prId string) (bool, error) {
-	return (*d.Store).Exists(prId)
-}
-
 func (d *DefaultHostAssociationService) Unregister(prId string) error {
 	return (*d.Store).Remove(prId)
-}
-
-func (d *DefaultHostAssociationService) GetAssociatedHost(prId string) (*models.AssociatedHost, error) {
-	pra, err := (*d.Store).Get(prId)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return pra.AssociatedHost(), nil
 }
 
 func (d *DefaultHostAssociationService) isReserved(pod v1.Pod) (bool, error) {
@@ -123,7 +107,7 @@ func (d *DefaultHostAssociationService) provisionHost(k8s *kubernetes.Clientset,
 	return models.NewAssociatedHost(newHost.Name, newHost.Status.PodIP)
 }
 
-func (d *DefaultHostAssociationService) ReserveHost(prId string, k8s *kubernetes.Clientset, atlantisNamespace string) (*models.PullRequestAssociation, error) {
+func (d *DefaultHostAssociationService) GetOrReserveHost(prId string, k8s *kubernetes.Clientset, atlantisNamespace string) (*models.PullRequestAssociation, error) {
 	// TODO: use https://github.com/enriquebris/goconcurrentqueue for locks
 	labelFilters := map[string]string{"app": "atlantis"}
 	podList, err := k8s.CoreV1().Pods(atlantisNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: (&(metav1.LabelSelector{MatchLabels: labelFilters})).String()})
@@ -142,7 +126,6 @@ func (d *DefaultHostAssociationService) ReserveHost(prId string, k8s *kubernetes
 
 	if vacantHost != nil {
 		pra = models.NewPullRequestAssociation(prId, *vacantHost)
-		(*d.HostStore).Insert(vacantHost.Name(), vacantHost)
 	} else {
 		newHost, provisionErr := d.provisionHost(k8s, atlantisNamespace)
 
@@ -150,11 +133,8 @@ func (d *DefaultHostAssociationService) ReserveHost(prId string, k8s *kubernetes
 			return nil, provisionErr
 		}
 
-		if newHost != nil {
-			(*d.HostStore).Insert(newHost.Name(), newHost)
-			pra = models.NewPullRequestAssociation(prId, *newHost)
-		}
+		pra = models.NewPullRequestAssociation(prId, *newHost)
 	}
 
-	return pra, (*d.Store).Insert(prId, pra)
+	return pra, store.AtomicInsert(prId, pra, d.Store, pra.AssociatedHost().Name(), pra.AssociatedHost(), d.HostStore)
 }
