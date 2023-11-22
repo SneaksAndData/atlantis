@@ -124,6 +124,7 @@ func (d *DefaultHostAssociationService) provisionHost(k8s *kubernetes.Clientset,
 }
 
 func (d *DefaultHostAssociationService) ReserveHost(prId string, k8s *kubernetes.Clientset, atlantisNamespace string) (*models.PullRequestAssociation, error) {
+	// TODO: use https://github.com/enriquebris/goconcurrentqueue for locks
 	labelFilters := map[string]string{"app": "atlantis"}
 	podList, err := k8s.CoreV1().Pods(atlantisNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: (&(metav1.LabelSelector{MatchLabels: labelFilters})).String()})
 
@@ -141,6 +142,7 @@ func (d *DefaultHostAssociationService) ReserveHost(prId string, k8s *kubernetes
 
 	if vacantHost != nil {
 		pra = models.NewPullRequestAssociation(prId, *vacantHost)
+		(*d.HostStore).Insert(vacantHost.Name(), vacantHost)
 	} else {
 		newHost, provisionErr := d.provisionHost(k8s, atlantisNamespace)
 
