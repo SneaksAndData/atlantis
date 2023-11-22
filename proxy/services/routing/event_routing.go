@@ -9,8 +9,9 @@ type EventRoutingService interface {
 	routePullRequest(target models.PullRequestAssociation, webhookRequest http.Request) (resp *http.Response, err error)
 }
 
-func routePullRequest(ers *EventRoutingService, target models.PullRequestAssociation, webhookRequest http.Request) (resp *http.Response, err error) {
-	const atlantisEventsControllerPath = "/events"
+type DefaultEventRoutingService struct {
+}
 
-	return http.Post(target.AssociatedHost.EventsUrl(), "application/json", webhookRequest.Body)
+func (ers *DefaultEventRoutingService) routePullRequest(target models.PullRequestAssociation, webhookRequest http.Request) (resp *http.Response, err error) {
+	return http.Post(target.AssociatedHost().EventsUrl(), "application/json", webhookRequest.Body)
 }
