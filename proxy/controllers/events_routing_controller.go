@@ -12,8 +12,8 @@ import (
 )
 
 type EventsRoutingController struct {
-	HostAssociation     *association.HostAssociationService
-	EventRouter         *routing.EventRoutingService
+	HostAssociation     *association.DefaultHostAssociationService
+	EventRouter         *routing.DefaultEventRoutingService
 	EventPublishChannel chan *http.Request
 	KubernetesClient    *kubernetes.Clientset
 }

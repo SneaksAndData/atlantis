@@ -28,7 +28,15 @@ func configureServices() (*kubernetes.Clientset, *association.DefaultHostAssocia
 }
 
 func main() {
-	router := controllers.EventsRoutingController{}
+	k8s, hostService, routerService := configureServices()
+
+	router := controllers.EventsRoutingController{
+		KubernetesClient:    k8s,
+		HostAssociation:     hostService,
+		EventRouter:         routerService,
+		EventPublishChannel: make(chan *http.Request),
+	}
+
 	s := &http.Server{
 		Addr:           ":8080",
 		Handler:        &router,
