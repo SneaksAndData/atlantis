@@ -6,12 +6,16 @@ import (
 )
 
 type EventRoutingService interface {
-	routePullRequest(target models.PullRequestAssociation, webhookRequest http.Request) (resp *http.Response, err error)
+	RoutePullRequest(target models.PullRequestAssociation, webhookRequest *http.Request) (resp *http.Response, err error)
 }
 
 type DefaultEventRoutingService struct {
 }
 
-func (ers *DefaultEventRoutingService) routePullRequest(target models.PullRequestAssociation, webhookRequest http.Request) (resp *http.Response, err error) {
+func NewEventRoutingService() *DefaultEventRoutingService {
+	return &DefaultEventRoutingService{}
+}
+
+func (ers *DefaultEventRoutingService) RoutePullRequest(target models.PullRequestAssociation, webhookRequest *http.Request) (resp *http.Response, err error) {
 	return http.Post(target.AssociatedHost().EventsUrl(), "application/json", webhookRequest.Body)
 }

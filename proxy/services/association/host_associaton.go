@@ -23,6 +23,10 @@ type DefaultHostAssociationService struct {
 	HostStore *store.StateStore[models.AssociatedHost]
 }
 
+func NewDefaultHostAssociationService(store *store.StateStore[models.PullRequestAssociation], hostStore *store.StateStore[models.AssociatedHost]) *DefaultHostAssociationService {
+	return &DefaultHostAssociationService{Store: store, HostStore: hostStore}
+}
+
 func (d *DefaultHostAssociationService) Unregister(prId string) error {
 	return (*d.Store).Remove(prId)
 }
@@ -108,7 +112,6 @@ func (d *DefaultHostAssociationService) provisionHost(k8s *kubernetes.Clientset,
 }
 
 func (d *DefaultHostAssociationService) GetOrReserveHost(prId string, k8s *kubernetes.Clientset, atlantisNamespace string) (*models.PullRequestAssociation, error) {
-	// TODO: use https://github.com/enriquebris/goconcurrentqueue for locks
 	labelFilters := map[string]string{"app": "atlantis"}
 	podList, err := k8s.CoreV1().Pods(atlantisNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: (&(metav1.LabelSelector{MatchLabels: labelFilters})).String()})
 

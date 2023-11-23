@@ -7,7 +7,6 @@ type StateStore[T any] interface {
 	Remove(key string) error
 	Get(key string) (*T, error)
 	Exists(key string) (bool, error)
-	Size() int
 }
 
 func AtomicInsert[A any, B any](keyA string, valueA *A, storeA *StateStore[A], keyB string, valueB *B, storeB *StateStore[B]) error {
