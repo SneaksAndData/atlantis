@@ -20,7 +20,6 @@ spec:
         app: atlantis-job
         pr-id: sneaksanddata-atlantis-fork-pull-745
     spec:
-      replicas: 1
       template:
         metadata:
           labels:
@@ -57,10 +56,6 @@ spec:
                 - secretRef:
                     name: atlantis-arm
               env:
-                - name: ATLANTIS_ALLOW_DRAFT_PRS
-                  value: 'true'
-                - name: ATLANTIS_DEFAULT_TF_VERSION
-                  value: 1.4.5
                 - name: ATLANTIS_LOG_LEVEL
                   value: info
                 - name: ATLANTIS_DATA_DIR
