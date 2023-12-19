@@ -23,7 +23,7 @@ func configureServices() (*kubernetes.Clientset, *association.DefaultHostAssocia
 		panic(err.Error())
 	}
 
-	return clientset, association.NewDefaultHostAssociationService(nil, nil), routing.NewEventRoutingService()
+	return clientset, association.NewDefaultHostAssociationService(clientset), routing.NewEventRoutingService()
 
 }
 

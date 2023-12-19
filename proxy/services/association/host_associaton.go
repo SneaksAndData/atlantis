@@ -3,11 +3,11 @@ package association
 import (
 	"context"
 	"fmt"
+	"github.com/pkg/errors"
 	"github.com/runatlantis/atlantis/proxy/models"
-	"github.com/runatlantis/atlantis/proxy/services/store"
-	v1 "k8s.io/api/core/v1"
+	v1batch "k8s.io/api/batch/v1"
+	v1core "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	applyconfigurationsautoscalingv1 "k8s.io/client-go/applyconfigurations/autoscaling/v1"
 	"k8s.io/client-go/kubernetes"
 	"time"
 )
@@ -19,55 +19,27 @@ type HostAssociationService interface {
 }
 
 type DefaultHostAssociationService struct {
-	Store     *store.StateStore[models.PullRequestAssociation]
-	HostStore *store.StateStore[models.AssociatedHost]
+	atlantisNamespace string
+	k8s               *kubernetes.Clientset
+	jobTemplate       *v1batch.Job
 }
 
-func NewDefaultHostAssociationService(store *store.StateStore[models.PullRequestAssociation], hostStore *store.StateStore[models.AssociatedHost]) *DefaultHostAssociationService {
-	return &DefaultHostAssociationService{Store: store, HostStore: hostStore}
+func NewDefaultHostAssociationService(kubernetesClient *kubernetes.Clientset) *DefaultHostAssociationService {
+	return &DefaultHostAssociationService{atlantisNamespace: "atlantis", k8s: kubernetesClient}
 }
 
-func (d *DefaultHostAssociationService) Unregister(prId string) error {
-	return (*d.Store).Remove(prId)
-}
-
-func (d *DefaultHostAssociationService) isReserved(pod v1.Pod) (bool, error) {
-	return (*d.HostStore).Exists(pod.Name)
-}
-
-func (d *DefaultHostAssociationService) findVacantHost(podList *v1.PodList) (*models.AssociatedHost, error) {
-	for _, pod := range podList.Items {
-		reserved, err := d.isReserved(pod)
-		if err != nil {
-			return nil, err
-		}
-
-		if !reserved {
-			host, hostErr := models.NewAssociatedHost(pod.Name, pod.Status.PodIP)
-			if hostErr != nil {
-				return nil, hostErr
-			}
-			return host, nil
-		}
-
-		continue
-	}
-
-	return nil, nil
-}
-
-func (d *DefaultHostAssociationService) waitForNewHost(k8s *kubernetes.Clientset, atlantisNamespace string, hostName string, out chan<- *v1.Pod) {
+func (d *DefaultHostAssociationService) waitForNewHost(hostName string, out chan<- *v1core.Pod) {
 	timeout := 300      // TODO: from config
 	cumulativeWait := 0 // TODO: from config
 	step := 10          // TODO: from config
 	for {
-		pod, err := k8s.CoreV1().Pods(atlantisNamespace).Get(context.TODO(), hostName, metav1.GetOptions{})
+		pod, err := d.k8s.CoreV1().Pods(d.atlantisNamespace).Get(context.TODO(), hostName, metav1.GetOptions{})
 
 		if err != nil {
 			out <- nil
 		}
 
-		if pod.Status.Phase == v1.PodRunning {
+		if pod.Status.Phase == v1core.PodRunning {
 			out <- pod
 			break
 		}
@@ -83,54 +55,70 @@ func (d *DefaultHostAssociationService) waitForNewHost(k8s *kubernetes.Clientset
 	}
 }
 
-func (d *DefaultHostAssociationService) provisionHost(k8s *kubernetes.Clientset, atlantisNamespace string) (*models.AssociatedHost, error) {
-	atlantis, err := k8s.AppsV1().StatefulSets(atlantisNamespace).Get(context.TODO(), "atlantis", metav1.GetOptions{})
+func (d *DefaultHostAssociationService) provisionHost(prId string) (*models.AssociatedHost, error) {
+	newJob := d.jobTemplate
+	newJob.SetName(prId)
+	newJob.SetLabels(map[string]string{"app": "atlantis-job", "prId": prId})
+
+	_, err := d.k8s.BatchV1().Jobs(d.atlantisNamespace).Create(context.TODO(), newJob, metav1.CreateOptions{})
 
 	if err != nil {
 		return nil, err
 	}
 
-	var newHostNumber = new(int32)
-	*newHostNumber = int32(atlantis.Size() + 1)
+	newAtlantisPod, searchErr := d.getHost(prId)
 
-	scaleConf := applyconfigurationsautoscalingv1.Scale()
-	scaleConf.Spec.Replicas = newHostNumber
-
-	_, scaleErr := k8s.AppsV1().StatefulSets(atlantisNamespace).ApplyScale(context.TODO(), "atlantis", scaleConf, metav1.ApplyOptions{})
-
-	if scaleErr != nil {
-		return nil, scaleErr
+	if searchErr != nil {
+		return nil, searchErr
 	}
 
 	// wait for scale to complete
-	scaleChannel := make(chan *v1.Pod, 1)
-	go d.waitForNewHost(k8s, atlantisNamespace, fmt.Sprintf("atlantis-%d", &newHostNumber), scaleChannel)
+	scaleChannel := make(chan *v1core.Pod, 1)
+	go d.waitForNewHost(newAtlantisPod.Name(), scaleChannel)
 
 	newHost := <-scaleChannel
 
 	return models.NewAssociatedHost(newHost.Name, newHost.Status.PodIP)
 }
 
-func (d *DefaultHostAssociationService) GetOrReserveHost(prId string, k8s *kubernetes.Clientset, atlantisNamespace string) (*models.PullRequestAssociation, error) {
-	labelFilters := map[string]string{"app": "atlantis"}
-	podList, err := k8s.CoreV1().Pods(atlantisNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: (&(metav1.LabelSelector{MatchLabels: labelFilters})).String()})
-
-	var pra *models.PullRequestAssociation
+func (d *DefaultHostAssociationService) getHost(prId string) (*models.AssociatedHost, error) {
+	job, err := d.k8s.BatchV1().Jobs(d.atlantisNamespace).Get(context.TODO(), prId, metav1.GetOptions{})
+	labelFilters := map[string]string{"app": "atlantis-job", "prId": prId}
 
 	if err != nil {
 		return nil, err
 	}
 
-	vacantHost, searchErr := d.findVacantHost(podList)
+	if job != nil {
+		podList, listErr := d.k8s.CoreV1().Pods(d.atlantisNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: (&(metav1.LabelSelector{MatchLabels: labelFilters})).String()})
 
-	if searchErr != nil {
-		return nil, searchErr
+		if listErr != nil {
+			return nil, listErr
+		}
+
+		if len(podList.Items) == 1 {
+			return models.NewAssociatedHost(podList.Items[0].Name, podList.Items[0].Status.PodIP)
+		}
+
+		return nil, errors.New(fmt.Sprintf("More than a single pod match PR %s", prId))
 	}
 
-	if vacantHost != nil {
-		pra = models.NewPullRequestAssociation(prId, *vacantHost)
+	return nil, nil
+}
+
+func (d *DefaultHostAssociationService) GetOrReserveHost(prId string) (*models.PullRequestAssociation, error) {
+	maybeHost, getHostErr := d.getHost(prId)
+
+	var pra *models.PullRequestAssociation
+
+	if getHostErr != nil {
+		return nil, getHostErr
+	}
+
+	if maybeHost != nil {
+		pra = models.NewPullRequestAssociation(prId, *maybeHost)
 	} else {
-		newHost, provisionErr := d.provisionHost(k8s, atlantisNamespace)
+		newHost, provisionErr := d.provisionHost(prId)
 
 		if provisionErr != nil {
 			return nil, provisionErr
@@ -139,5 +127,5 @@ func (d *DefaultHostAssociationService) GetOrReserveHost(prId string, k8s *kuber
 		pra = models.NewPullRequestAssociation(prId, *newHost)
 	}
 
-	return pra, store.AtomicInsert(prId, pra, d.Store, pra.AssociatedHost().Name(), pra.AssociatedHost(), d.HostStore)
+	return pra, nil
 }

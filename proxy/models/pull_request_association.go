@@ -1,21 +1,28 @@
 package models
 
 import (
+	"github.com/google/uuid"
 	"time"
 )
 
 type PullRequestAssociation struct {
 	pullRequestId  string
+	pullRequestUrl string
 	associatedHost AssociatedHost
 	createdAt      time.Time
 }
 
-func NewPullRequestAssociation(prId string, host AssociatedHost) *PullRequestAssociation {
+func NewPullRequestAssociation(prUrl string, host AssociatedHost) *PullRequestAssociation {
 	return &PullRequestAssociation{
-		pullRequestId:  prId,
+		pullRequestId:  uuid.New().String(),
+		pullRequestUrl: prUrl,
 		associatedHost: host,
 		createdAt:      time.Now().UTC(),
 	}
+}
+
+func (pra *PullRequestAssociation) PullRequestUrl() string {
+	return pra.pullRequestUrl
 }
 
 func (pra *PullRequestAssociation) PullRequestId() string {
