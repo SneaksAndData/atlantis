@@ -48,6 +48,7 @@ spec:
                 - server
                 - '--gh-org=SneaksAndData'
                 - '--allow-commands=version,plan,apply,unlock,approve_policies,import'
+                - '--use-tf-plugin-cache=false'
               ports:
                 - name: atlantis
                   containerPort: 4141
