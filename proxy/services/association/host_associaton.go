@@ -2,6 +2,7 @@ package association
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/runatlantis/atlantis/proxy/models"
@@ -24,8 +25,22 @@ type DefaultHostAssociationService struct {
 	jobTemplate       *v1batch.Job
 }
 
-func NewDefaultHostAssociationService(kubernetesClient *kubernetes.Clientset) *DefaultHostAssociationService {
-	return &DefaultHostAssociationService{atlantisNamespace: "atlantis", k8s: kubernetesClient}
+func NewDefaultHostAssociationService(kubernetesClient *kubernetes.Clientset) (*DefaultHostAssociationService, error) {
+	jobConf, err := kubernetesClient.CoreV1().ConfigMaps("atlantis").Get(context.TODO(), "atlantis-host-template", metav1.GetOptions{})
+
+	if err != nil {
+		return nil, err
+	}
+
+	var jt *v1batch.Job
+
+	jsonErr := json.Unmarshal([]byte(jobConf.Data["template"]), &jt)
+
+	if jsonErr != nil {
+		return nil, jsonErr
+	}
+
+	return &DefaultHostAssociationService{atlantisNamespace: "atlantis", k8s: kubernetesClient, jobTemplate: jt}, nil
 }
 
 func (d *DefaultHostAssociationService) waitForNewHost(hostName string, out chan<- *v1core.Pod) {
