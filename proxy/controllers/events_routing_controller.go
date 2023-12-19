@@ -71,7 +71,7 @@ func (e *EventsRoutingController) routeGithubRequest() {
 			continue
 		}
 
-		prAssociation, getErr := (*e.HostAssociation).GetOrReserveHost(prId, e.KubernetesClient, "atlantis")
+		prAssociation, getErr := (*e.HostAssociation).GetOrReserveHost(prId)
 
 		if getErr != nil {
 			// TODO: log, go next
