@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: atlantis-job-data
+  namespace: atlantis
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Gi
+  volumeName: pvc-123-1231-1231-23-123
+  storageClassName: efs
+  volumeMode: Filesystem

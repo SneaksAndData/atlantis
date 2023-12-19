@@ -121,8 +121,8 @@ func (d *DefaultHostAssociationService) getHost(prId string) (*models.Associated
 	return nil, nil
 }
 
-func (d *DefaultHostAssociationService) GetOrReserveHost(prId string) (*models.PullRequestAssociation, error) {
-	maybeHost, getHostErr := d.getHost(prId)
+func (d *DefaultHostAssociationService) GetOrReserveHost(prUrl string) (*models.PullRequestAssociation, error) {
+	maybeHost, getHostErr := d.getHost(prUrl)
 
 	var pra *models.PullRequestAssociation
 
@@ -131,15 +131,15 @@ func (d *DefaultHostAssociationService) GetOrReserveHost(prId string) (*models.P
 	}
 
 	if maybeHost != nil {
-		pra = models.NewPullRequestAssociation(prId, *maybeHost)
+		pra = models.NewPullRequestAssociation(prUrl, *maybeHost)
 	} else {
-		newHost, provisionErr := d.provisionHost(prId)
+		newHost, provisionErr := d.provisionHost(prUrl)
 
 		if provisionErr != nil {
 			return nil, provisionErr
 		}
 
-		pra = models.NewPullRequestAssociation(prId, *newHost)
+		pra = models.NewPullRequestAssociation(prUrl, *newHost)
 	}
 
 	return pra, nil

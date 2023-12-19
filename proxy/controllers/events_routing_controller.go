@@ -48,7 +48,7 @@ func (e *EventsRoutingController) parseRequestBody(r *http.Request) ([]byte, err
 func (e *EventsRoutingController) routeGithubRequest() {
 	for httpRequest := range e.EventPublishChannel {
 		payload, err := e.parseRequestBody(httpRequest)
-		var prId string
+		var prUrl string
 
 		if err != nil {
 			// TODO: debug log, go next
@@ -63,15 +63,15 @@ func (e *EventsRoutingController) routeGithubRequest() {
 				// TODO: debug log, go next
 				continue
 			}
-			prId = event.Issue.PullRequestLinks.GetURL()
+			prUrl = event.Issue.PullRequestLinks.GetURL()
 		case *github.PullRequestEvent:
-			prId = event.PullRequest.GetURL()
+			prUrl = event.PullRequest.GetURL()
 		default:
 			// TODO: debug log, go next
 			continue
 		}
 
-		prAssociation, getErr := (*e.HostAssociation).GetOrReserveHost(prId)
+		prAssociation, getErr := (*e.HostAssociation).GetOrReserveHost(prUrl)
 
 		if getErr != nil {
 			// TODO: log, go next

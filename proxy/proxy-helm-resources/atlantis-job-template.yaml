@@ -1,0 +1,137 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sneaksanddata-atlantis-fork-pull-745
+  namespace: atlantis
+spec:
+  activeDeadlineSeconds: 86400
+  podFailurePolicy:
+    rules:
+      - action: Ignore
+        onExitCodes: null
+        onPodConditions:
+          - type: DisruptionTarget
+            status: 'True'
+  backoffLimit: 3
+  template:
+    metadata:
+      name: atlantis-pr-host
+      labels:
+        app: atlantis-job
+        pr-id: sneaksanddata-atlantis-fork-pull-745
+    spec:
+      replicas: 1
+      template:
+        metadata:
+          labels:
+            app: atlantis
+            release: atlantis
+        spec:
+          volumes:
+            - name: github-app-key-volume
+              secret:
+                secretName: atlantis-webhook
+                items:
+                  - key: key.pem
+                    path: key.pem
+                defaultMode: 420
+            - name: atlantis-data
+              persistentVolumeClaim:
+                claimName: atlantis-job-data
+            - name: repo-config
+              configMap:
+                name: atlantis-repo-config
+                defaultMode: 420
+          containers:
+            - name: atlantis
+              image: atlantis:v1.2.3.4
+              args:
+                - server
+                - '--gh-org=SneaksAndData'
+                - '--allow-commands=version,plan,apply,unlock,approve_policies,import'
+              ports:
+                - name: atlantis
+                  containerPort: 4141
+                  protocol: TCP
+              envFrom:
+                - secretRef:
+                    name: atlantis-arm
+              env:
+                - name: ATLANTIS_ALLOW_DRAFT_PRS
+                  value: 'true'
+                - name: ATLANTIS_DEFAULT_TF_VERSION
+                  value: 1.4.5
+                - name: ATLANTIS_LOG_LEVEL
+                  value: info
+                - name: ATLANTIS_DATA_DIR
+                  value: /sneaksanddata-atlantis-fork-pull-745/atlantis-data
+                - name: ATLANTIS_PORT
+                  value: '4141'
+                - name: ATLANTIS_REPO_CONFIG
+                  value: /etc/atlantis/repos.yaml
+                - name: ATLANTIS_GH_WEBHOOK_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: atlantis-webhook
+                      key: github_secret
+                - name: ATLANTIS_GH_APP_KEY_FILE
+                  value: /var/github-app/key.pem
+              resources:
+                limits:
+                  cpu: '3'
+                  memory: 4Gi
+                requests:
+                  cpu: '3'
+                  memory: 4Gi
+              volumeMounts:
+                - name: atlantis-data
+                  mountPath: /sneaksanddata-atlantis-fork-pull-745/atlantis-data
+                - name: repo-config
+                  readOnly: true
+                  mountPath: /etc/atlantis/repos.yaml
+                  subPath: repos.yaml
+                - name: github-app-key-volume
+                  readOnly: true
+                  mountPath: /var/github-app
+              livenessProbe:
+                httpGet:
+                  path: /healthz
+                  port: 4141
+                  scheme: HTTP
+                initialDelaySeconds: 5
+                timeoutSeconds: 5
+                periodSeconds: 60
+                successThreshold: 1
+                failureThreshold: 5
+              readinessProbe:
+                httpGet:
+                  path: /healthz
+                  port: 4141
+                  scheme: HTTP
+                initialDelaySeconds: 5
+                timeoutSeconds: 5
+                periodSeconds: 60
+                successThreshold: 1
+                failureThreshold: 5
+              imagePullPolicy: IfNotPresent
+          restartPolicy: Always
+          serviceAccountName: atlantis
+          serviceAccount: atlantis
+          securityContext:
+            runAsUser: 100
+            fsGroup: 1000
+            fsGroupChangePolicy: OnRootMismatch
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: kubernetes.sneaksanddata.com/servicenodetype
+                        operator: In
+                        values:
+                          - atlantis
+          tolerations:
+            - key: kubernetes.sneaksanddata.com/servicenodetype
+              operator: Equal
+              value: atlantis
+              effect: NoSchedule

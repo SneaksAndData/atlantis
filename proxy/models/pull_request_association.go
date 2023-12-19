@@ -1,7 +1,8 @@
 package models
 
 import (
-	"github.com/google/uuid"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -13,8 +14,14 @@ type PullRequestAssociation struct {
 }
 
 func NewPullRequestAssociation(prUrl string, host AssociatedHost) *PullRequestAssociation {
+	parsed, err := url.Parse(prUrl)
+
+	if err != nil {
+		return nil
+	}
+
 	return &PullRequestAssociation{
-		pullRequestId:  uuid.New().String(),
+		pullRequestId:  strings.ToLower(strings.Replace(parsed.Path, "/", "", -1)),
 		pullRequestUrl: prUrl,
 		associatedHost: host,
 		createdAt:      time.Now().UTC(),
